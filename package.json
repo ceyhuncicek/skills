@@ -1,0 +1,17 @@
+{
+  "name": "@ceyhuncicek/skills",
+  "version": "1.0.0",
+  "description": "CLI to manage Claude Code skills for ~/.claude/skills/",
+  "bin": {
+    "skills": "./bin/skills.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "skills/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
