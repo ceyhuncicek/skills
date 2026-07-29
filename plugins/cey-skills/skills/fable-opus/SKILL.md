@@ -17,12 +17,21 @@ Split roles for the rest of the session:
   - **Verifiers** — a DIFFERENT agent than the implementer runs the test suite / syntax checks / behavior scripts / server restarts and reports raw results. Fresh eyes.
 - Run independent agents concurrently (one message, multiple Agent calls). Reuse an agent's thread via SendMessage for follow-ups/corrections instead of re-briefing from scratch.
 
-## Worktree discipline (mandatory)
+## Startup questions (always, before any work)
+
+Immediately on invocation, ask the user ONE multi-select question via the AskUserQuestion tool (multiSelect: true), header "This run", question "Which options for this run?":
+
+- **Use worktree** — work in an isolated git worktree, squash-merged back when done (see Worktree discipline).
+- **Deploy when done** — after verification passes and changes are merged, deploy using the project's existing deploy method (look it up: deploy scripts, `package.json` scripts, dokku/git remotes, CI docs). If no deploy method is discoverable, say so and skip.
+
+The user may select both, one, or skip entirely (skip = neither: work directly on the current branch, no deploy). Do not re-ask on later tasks in the same session unless the user asks to change it.
+
+## Worktree discipline (only when "Use worktree" selected)
 
 1. At task start, create an isolated worktree with the `EnterWorktree` tool (load it via ToolSearch first). Verify the worktree is based on the CURRENT local main branch — if it branched from a stale `origin/<main>`, `git reset --hard <main>` before any work.
 2. All agents must be told the absolute worktree path and instructed to work ONLY there.
 3. **Done = merged to master.** The task ends with all changes committed on the worktree branch (clean `git status`), verified, and then **merged into the main branch as soon as possible** — do not let finished features sit unmerged on a worktree branch, since parallel sessions cause conflicts. Merge each feature immediately after verification passes, then delete the worktree and branch. Never stack a second unmerged feature on top of an unmerged one.
-4. **Merging = always squash merge** (`git merge --squash`), with a brief explanation in the commit message of what the change does and why. Never a plain merge commit or a fast-forward of the branch's WIP history.
+4. **Merging = always squash merge** (`git merge --squash`) into the repo's default branch — `main` or `master`, whichever the app actually uses (check `git symbolic-ref refs/remotes/origin/HEAD` or the local branch list) — with a brief explanation in the commit message of what the change does and why. Never a plain merge commit or a fast-forward of the branch's WIP history.
 
 ## Workflow
 
