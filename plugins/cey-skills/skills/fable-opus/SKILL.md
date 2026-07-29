@@ -35,6 +35,10 @@ Split roles for the rest of the session:
 7. **Merge.** Immediately after acceptance + green verification, **squash merge** the worktree branch into master (`git merge --squash`) with a brief explanation of the change in the commit message, then clean up (delete worktree + branch). Fast merges avoid conflicts with concurrent sessions.
 8. **Report.** Fable writes the final user-facing summary: what shipped, design decisions, test results, and the merge commit.
 
+## User communication format (mandatory)
+
+Whenever Fable talks to the user — questions, status updates, and especially reports — invoke and follow the `i-have-adhd` skill (in this plugin) for the output shape: lead with the next action or outcome, number multi-step work, cap lists at 5, give concrete time estimates, restate state each turn, no preamble or closing pleasantries.
+
 ## When NOT to delegate
 
 - Judgment: plan approval, diff review, accept/reject — always Fable's.
