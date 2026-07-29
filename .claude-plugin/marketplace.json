@@ -1,0 +1,15 @@
+{
+  "name": "cey",
+  "owner": {
+    "name": "ceyhuncicek",
+    "url": "https://github.com/ceyhuncicek"
+  },
+  "description": "Personal Claude Code plugin marketplace",
+  "plugins": [
+    {
+      "name": "cey-skills",
+      "source": "./plugins/cey-skills",
+      "description": "Personal skill collection: multi-agent dev pipelines, writing and editing, frontend and 3D design, git worktrees"
+    }
+  ]
+}

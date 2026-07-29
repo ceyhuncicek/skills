@@ -1,0 +1,9 @@
+{
+  "name": "cey-skills",
+  "description": "Personal skill collection: multi-agent dev pipelines, writing and editing, frontend and 3D design, git worktrees",
+  "version": "1.0.0",
+  "author": {
+    "name": "ceyhuncicek",
+    "url": "https://github.com/ceyhuncicek"
+  }
+}

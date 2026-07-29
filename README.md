@@ -1,84 +1,94 @@
-# @ceyhuncicek/skills
+# cey — Claude Code plugin marketplace
 
-CLI to install and manage personal Claude Code skills.
+A personal [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) that
+distributes one plugin, `cey-skills`, containing my working set of skills.
 
-## Install
+Installing the plugin makes every skill below available in Claude Code automatically — no copying files
+into `~/.claude/skills/` and no CLI to keep in sync.
 
-```bash
-npm install -g @ceyhuncicek/skills
-# or use directly with npx (no install needed):
-npx @ceyhuncicek/skills <command>
-```
-
-## Commands
+## Register the marketplace
 
 ```bash
-skills list                 # Show all bundled skills and versions
-skills add <name>           # Install a skill to ~/.claude/skills/
-skills remove <name>        # Remove an installed skill
-skills update <name>        # Update an installed skill to latest version
-skills installed            # Show installed skills and update status
+claude plugin marketplace add ceyhuncicek/skills
 ```
 
-## Available Skills
+Or from inside a Claude Code session:
 
-| Skill | Description |
-|-------|-------------|
-| `pipeline` | Multi-agent dev pipeline (PM → parallel Coders → Reviewer) |
-| `deep-pipeline` | Deep research pipeline with dual-PM planning and research agents |
-| `story-writer` | Write short stories with professional craft and structure |
-| `text-fixer` | Fix text to be natural, clear, and human-sounding |
+```
+/plugin marketplace add ceyhuncicek/skills
+```
 
-## Usage Examples
+## Install the plugin
 
 ```bash
-# See what's available
-npx @ceyhuncicek/skills list
-
-# Install a skill
-npx @ceyhuncicek/skills add pipeline
-
-# Check installed skills for updates
-npx @ceyhuncicek/skills installed
-
-# Update a skill to latest version
-npx @ceyhuncicek/skills update pipeline
-
-# Remove a skill
-npx @ceyhuncicek/skills remove pipeline
+claude plugin install cey-skills@cey
 ```
 
-## Publishing a New Version
+Or in-session:
 
-To release updated skill content:
+```
+/plugin install cey-skills@cey
+```
 
-1. Edit `skills/<name>/SKILL.md` and bump `version:` in the frontmatter
-2. Run:
+Restart Claude Code to load the skills.
+
+## Update
 
 ```bash
-npm version patch
-npm publish --access public
+claude plugin marketplace update cey
+claude plugin update cey-skills
 ```
 
-Users get the update by running:
+The first command refreshes the catalog, the second pulls the new plugin version. Restart to apply.
+
+## Skills
+
+| Skill | What it does |
+|-------|--------------|
+| `agent-pipeline` | Multi-agent dev pipeline: PM plans and groups subtasks by file ownership, parallel Coders implement, Reviewer checks. |
+| `brainstorming` | Explores intent, approaches, and design decisions before any implementation or planning starts. |
+| `deep-pipeline` | Deeper pipeline: dedicated research agents, then dual-PM Actor-Critic planning, then parallel Coders and a Reviewer. |
+| `document-review` | Refines a brainstorm or plan document before moving to the next step of the workflow. |
+| `fable-gpt` | Fable orchestrates and reviews while Codex implements. |
+| `fable-opus` | Fable plans, directs, and reviews while Opus agents research and implement in a worktree. |
+| `frontend-design` | Builds distinctive, production-grade frontend interfaces that avoid generic AI aesthetics. |
+| `git-worktree` | Creates, lists, switches, and cleans up Git worktrees for parallel development. |
+| `humanizer` | Strips the tells of AI-generated prose, based on Wikipedia's "Signs of AI writing" guide. |
+| `img2threejs` | Turns a reference image into a quality-gated, animation-ready procedural Three.js model. |
+| `story-writer` | Writes short fiction with real structure, curiosity hooks, and tension. |
+| `text-fixer` | Rewrites text to be natural, direct, and clear: cuts clichés, fluff, and stray dashes. |
+
+`agent-pipeline` and `deep-pipeline` need `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in your `settings.json`.
+
+## Layout
+
+```
+.claude-plugin/marketplace.json     # the catalog
+plugins/cey-skills/
+  .claude-plugin/plugin.json        # plugin manifest
+  skills/<name>/SKILL.md            # one directory per skill
+```
+
+## Developing
+
+Point Claude Code at a local checkout instead of GitHub:
 
 ```bash
-npx @ceyhuncicek/skills update <name>
+claude plugin marketplace add /path/to/skills
+claude plugin install cey-skills@cey
 ```
 
-## Development
+Validate the manifests and skill files before pushing:
 
 ```bash
-# Test locally without installing
-node bin/skills.js list
-node bin/skills.js add pipeline
-node bin/skills.js installed
-node bin/skills.js remove pipeline
+claude plugin validate .
+claude plugin validate ./plugins/cey-skills
 ```
 
-## First-Time Publish
+To release, edit the skill files, bump `version` in `plugins/cey-skills/.claude-plugin/plugin.json`,
+and push. Users only see an update when that version string changes.
 
-```bash
-npm login
-npm publish --access public
-```
+## Third-party skills
+
+`humanizer` and `img2threejs` are vendored from their upstream projects and keep their original MIT
+`LICENSE` files. `frontend-design` carries its own license terms.
