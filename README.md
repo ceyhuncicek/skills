@@ -55,6 +55,7 @@ The first command refreshes the catalog, the second pulls the new plugin version
 | `git-worktree` | Creates, lists, switches, and cleans up Git worktrees for parallel development. |
 | `humanizer` | Strips the tells of AI-generated prose, based on Wikipedia's "Signs of AI writing" guide. |
 | `img2threejs` | Turns a reference image into a quality-gated, animation-ready procedural Three.js model. |
+| `pr-pending-review` | Turns a PR link into pending, unsubmitted GitHub review comments, written as questions rather than verdicts. |
 | `story-writer` | Writes short fiction with real structure, curiosity hooks, and tension. |
 | `text-fixer` | Rewrites text to be natural, direct, and clear: cuts clichés, fluff, and stray dashes. |
 
