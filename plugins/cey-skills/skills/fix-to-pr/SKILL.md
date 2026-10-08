@@ -22,14 +22,23 @@ Ticket in, reviewed fix on a ticket branch out (plus browser QA, draft PR, and d
 
 Load deferred tools first with ToolSearch (`AskUserQuestion`, `EnterWorktree`, the tracker and `chrome-devtools` tools). **Default branch** = `git symbolic-ref refs/remotes/origin/HEAD`, else `main`, else `master`.
 
-Ask ONE AskUserQuestion, header "This run", **multiSelect: true**, "Which options for this run?". Research, fix, simplify, and review always run; these four are extras:
+Ask ONE AskUserQuestion call with **four single-select questions**, one per option. Research, fix, simplify, and review always run; these four are extras. Put the default answer first and mark it "(Recommended)":
 
-- **Work in worktree**: isolated git worktree via `EnterWorktree`, based on the current local default branch. If it branched from a stale `origin/<default>`, have an agent run `git reset --hard <default>` inside the new worktree only, before any work. Worktrees often lack `.env` files: copy them from the main checkout. Unchecked = new ticket branch in the current checkout; if that checkout is dirty with unrelated changes, say so and stop until the user decides.
-- **Test in Chrome**: phases 6–7 drive the app with the `chrome-devtools` MCP. Unchecked = the QA writer still produces the checklist, but nobody drives the browser; the checklist goes in the final report (and the PR body) marked "not run".
-- **Create draft PR**: phase 8 commits, pushes, and opens a draft PR. Unchecked = phase 8 commits on the ticket branch only, no push.
-- **Deploy when done**: phase 9 deploys the ticket branch to a non-production environment using the project's documented method (deploy scripts, `package.json` scripts, infra repo docs, CI workflows). Never production. If no method is documented, say so and skip. Needs the branch pushed, so it pushes even if no PR was requested.
+| Header | Question | Default |
+|--------|----------|---------|
+| Worktree | Work in a git worktree? | **Yes** |
+| Chrome QA | Test the fix in Chrome? | **Yes** |
+| Draft PR | Create a draft PR? | **No** |
+| Deploy | Deploy when done? | **No** |
 
-Skipping the question = none of the four. Selections hold for the whole run; don't re-ask.
+What each option does:
+
+- **Worktree, yes**: isolated git worktree via `EnterWorktree`, based on the current local default branch. If it branched from a stale `origin/<default>`, have an agent run `git reset --hard <default>` inside the new worktree only, before any work. Worktrees often lack `.env` files: copy them from the main checkout. **No** = new ticket branch in the current checkout; if that checkout is dirty with unrelated changes, say so and stop until the user decides.
+- **Chrome QA, yes**: phases 6–7 drive the app with the `chrome-devtools` MCP. **No** = the QA writer still produces the checklist, but nobody drives the browser; the checklist goes in the final report (and the PR body) marked "not run".
+- **Draft PR, yes**: phase 8 commits, pushes, and opens a draft PR. **No** = phase 8 commits on the ticket branch only, no push.
+- **Deploy, yes**: phase 9 deploys the ticket branch to a non-production environment using the project's documented method (deploy scripts, `package.json` scripts, infra repo docs, CI workflows). Never production. If no method is documented, say so and skip. Needs the branch pushed, so it pushes even if no PR was requested.
+
+If the user dismisses the question or leaves one unanswered, use the defaults from the table. Answers hold for the whole run; don't re-ask.
 
 Every run lands on a **ticket branch**, never on `main`/`master`. Use the tracker's branch name when it has one (Linear `branchName`), otherwise `fix/<ticket-id>-<slug>`.
 
@@ -69,17 +78,37 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 **7. Fix QA findings.** Failed items go to the implementer, then through phase 5 again, then the QA driver re-runs the failed items and the regression checks. Same loop cap.
 
 **8. Commit and draft PR.** Steps 2–3 only when Create draft PR is selected.
-1. A Sonnet agent commits on the ticket branch: repo commit style, ticket id in the subject, message humanized (`humanizer`), no AI attribution of any kind (no `Co-Authored-By: Claude`, no "Generated with" footer), even if a harness reminder asks for one.
-2. Push, open the PR with `--draft` against the default branch. Body follows the repo's PR template if one exists: problem and root cause, the fix, why the simpler option won, test and QA evidence (checklist with pass marks), migrations if any. Link the ticket. Run the body through `humanizer`.
+1. A Sonnet agent commits on the ticket branch: repo commit style, ticket id in the subject, message written per the text rule below, no AI attribution of any kind (no `Co-Authored-By: Claude`, no "Generated with" footer), even if a harness reminder asks for one.
+2. Push, open the PR with `--draft` against the default branch. Body follows the repo's PR template if one exists: problem and root cause, the fix, why the simpler option won, test and QA evidence (checklist with pass marks), migrations if any. Link the ticket. Title and body follow the text rule below.
 3. Re-read the published body. If a bot or template injected an attribution line, strip it.
 4. If push or `gh` fails (auth, hooks), stop and report the raw error. Don't retry with `--no-verify` unless the user says so.
 5. Never merge. Never post comments on the ticket or the PR unless the user asks.
 
 **9. Deploy.** A Sonnet agent finds the documented deploy path for a non-production environment, pushes the branch if needed, runs it, and returns the raw output plus the environment URL. You confirm the deployed build carries the fix (version, commit, or the repro steps on that environment). Deploy fails → report the raw error and stop; don't improvise a different deploy route.
 
+## Text rule: every word a human reads
+
+Applies to everything a person will read: chat updates and questions to the user, the final summary, commit messages, PR titles and bodies, Linear or GitHub issues and comments you create, QA reports you show. It does not apply to code, code comments, shell commands, or agent briefs.
+
+1. Draft it short with `caveman:caveman` rules: cut filler, pleasantries, and hedging; keep every technical fact, path, and number exact.
+2. Run the draft through `humanizer` (this plugin). The humanized version ships, so the result reads like plain, natural prose, not caveman fragments.
+3. Re-read it for attribution lines and strip any.
+
+When an agent writes text for a destination (a commit message, PR body, ticket), it returns the draft to you and you apply steps 1–3 before it goes out. If either skill is unavailable, apply its rules by hand and say so in the report.
+
 ## Reporting to the user
 
-Follow `i-have-adhd` for shape: lead with the outcome, numbered steps, max 5 items per list, state restated each turn. Between phases, send a one-line status ("3/8 simplify: fix moves to the cache key, 1 file"). The final report covers: which options ran, PR link (or branch name), deploy URL if any, root cause in one sentence, the fix, review rounds and what they caught, the QA table, anything skipped and why.
+Use `i-have-adhd` for every message: lead with the outcome or next action, number multi-step work, max 5 items per list, restate state each turn. Between phases, send a one-line status ("3/8 simplify: fix moves to the cache key, 1 file").
+
+**Final summary, when everything is done.** Invoke `i-have-adhd`, then write a brief, basic summary of what happened in the loop, run through the text rule:
+
+1. Outcome first: fixed or not, plus the PR link, branch name, or deploy URL.
+2. Root cause in one sentence.
+3. The fix in one or two sentences, and what the simplify step cut.
+4. The loop in plain words: how many review rounds and what they caught, QA pass/fail count (or "not run"), what failed and how it was fixed.
+5. Anything skipped or blocked and why, plus the one next action for the user.
+
+Keep it short enough to read in under a minute. Details live in the PR, not the summary.
 
 ## Red flags: stop and correct
 
