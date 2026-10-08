@@ -51,6 +51,7 @@ The first command refreshes the catalog, the second pulls the new plugin version
 | `document-review` | Refines a brainstorm or plan document before moving to the next step of the workflow. |
 | `fable-gpt` | Fable orchestrates and reviews while Codex implements. |
 | `fable-opus` | Fable plans, directs, and reviews while Opus agents research and implement in a worktree. |
+| `fix-to-pr` | Takes a bug ticket to a draft PR: research, a simpler fix, review, browser QA. Opus orchestrates and checks, Sonnet agents do the work. |
 | `frontend-design` | Builds distinctive, production-grade frontend interfaces that avoid generic AI aesthetics. |
 | `git-worktree` | Creates, lists, switches, and cleans up Git worktrees for parallel development. |
 | `humanizer` | Strips the tells of AI-generated prose, based on Wikipedia's "Signs of AI writing" guide. |
