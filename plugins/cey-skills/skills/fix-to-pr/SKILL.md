@@ -1,13 +1,13 @@
 ---
 name: fix-to-pr
-description: Use when the user invokes /fix-to-pr, or hands over a bug ticket (Linear/GitHub issue link or a bug report) and wants it researched, fixed, reviewed, browser-tested, and opened as a draft pull request in one run.
+description: Use when the user invokes /fix-to-pr, or hands over a bug ticket (Linear/GitHub issue link or a bug report) and wants it researched, fixed, and reviewed in one run, optionally with browser QA, a draft pull request, or a deploy.
 ---
 
 # fix-to-pr — Opus conducts and checks, Sonnet does the work
 
 ## Overview
 
-Ticket in, draft PR out. Same split as `fable-opus`, different cast:
+Ticket in, reviewed fix on a ticket branch out (plus browser QA, draft PR, and deploy when picked). Same split as `fable-opus`, different cast:
 
 - **Claude (the session, latest Opus) = orchestrator and checker.** You own the ticket, the plan, every gate decision, and all talk with the user. You never edit code, run test suites, or drive the browser. You DO check: read the files and lines an agent cites, read every diff, look at every screenshot. An agent's report is a claim until you have checked it. If the session is not on Opus, stop and ask the user to switch (`/model opus`). Don't start on another model.
 - **Sonnet agents = all hands-on work.** Spawn every delegate with the Agent tool and an explicit `model: "sonnet"`. Never omit `model` (it would inherit Opus) and never downgrade to haiku.
@@ -22,12 +22,16 @@ Ticket in, draft PR out. Same split as `fable-opus`, different cast:
 
 Load deferred tools first with ToolSearch (`AskUserQuestion`, `EnterWorktree`, the tracker and `chrome-devtools` tools). **Default branch** = `git symbolic-ref refs/remotes/origin/HEAD`, else `main`, else `master`.
 
-Ask ONE AskUserQuestion, header "This run", single select, "Where should the fix happen?":
+Ask ONE AskUserQuestion, header "This run", **multiSelect: true**, "Which options for this run?". Research, fix, simplify, and review always run; these four are extras:
 
-- **Worktree (Recommended)**: isolated git worktree via `EnterWorktree` (load with ToolSearch), based on the current local default branch. If it branched from a stale `origin/<default>`, have an agent run `git reset --hard <default>` inside the new worktree only, before any work. Worktrees often lack `.env` files: copy them from the main checkout.
-- **Current checkout**: new ticket branch off the default branch in the current checkout. If the working tree is dirty with unrelated changes, say so and stop until the user decides.
+- **Work in worktree**: isolated git worktree via `EnterWorktree`, based on the current local default branch. If it branched from a stale `origin/<default>`, have an agent run `git reset --hard <default>` inside the new worktree only, before any work. Worktrees often lack `.env` files: copy them from the main checkout. Unchecked = new ticket branch in the current checkout; if that checkout is dirty with unrelated changes, say so and stop until the user decides.
+- **Test in Chrome**: phases 6–7 drive the app with the `chrome-devtools` MCP. Unchecked = the QA writer still produces the checklist, but nobody drives the browser; the checklist goes in the final report (and the PR body) marked "not run".
+- **Create draft PR**: phase 8 commits, pushes, and opens a draft PR. Unchecked = phase 8 commits on the ticket branch only, no push.
+- **Deploy when done**: phase 9 deploys the ticket branch to a non-production environment using the project's documented method (deploy scripts, `package.json` scripts, infra repo docs, CI workflows). Never production. If no method is documented, say so and skip. Needs the branch pushed, so it pushes even if no PR was requested.
 
-Either way the work lands on a **ticket branch**, never on `main`/`master`. Use the tracker's branch name when it has one (Linear `branchName`), otherwise `fix/<ticket-id>-<slug>`.
+Skipping the question = none of the four. Selections hold for the whole run; don't re-ask.
+
+Every run lands on a **ticket branch**, never on `main`/`master`. Use the tracker's branch name when it has one (Linear `branchName`), otherwise `fix/<ticket-id>-<slug>`.
 
 ## The flow
 
@@ -43,9 +47,10 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 | 3 | Simplify | fresh Sonnet planner | Smallest change that still fixes the root cause. You pick the final plan |
 | 4 | Apply | Sonnet implementer | Diff matches the final plan, failing test added first and now passing, project checks green |
 | 5 | Review | fresh Sonnet reviewer + implementer | Every finding triaged by you, real ones fixed, re-review clean |
-| 6 | QA in browser | Sonnet QA writer, then Sonnet QA driver | Every QA item has pass/fail evidence (screenshot or console/network output) you looked at |
-| 7 | Fix QA findings | implementer, then back to 5 | Failed items now pass on re-run |
-| 8 | Draft PR | Sonnet agent (or you for the PR text) | Branch pushed, draft PR open, body humanized, no attribution lines |
+| 6 | QA in browser *(if Test in Chrome)* | Sonnet QA writer, then Sonnet QA driver | Every QA item has pass/fail evidence (screenshot or console/network output) you looked at |
+| 7 | Fix QA findings *(if Test in Chrome)* | implementer, then back to 5 | Failed items now pass on re-run |
+| 8 | Commit, then draft PR *(PR if Create draft PR)* | Sonnet agent (or you for the PR text) | Clean commit on the ticket branch; with PR: pushed, draft open, body humanized, no attribution lines |
+| 9 | Deploy *(if Deploy when done)* | Sonnet agent | Deploy command output and the environment URL you checked loads the fix |
 
 ### Phase details
 
@@ -59,20 +64,22 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 
 **5. Review.** A fresh agent invokes `caveman:caveman-review` (Skill tool) on `git diff <default>` in the working path, which includes uncommitted work. It also reads the repo's own review rules (a `pr-review` skill, CONVENTIONS docs) if they exist. For each finding you mark real / not-real / out-of-scope, with one line of reasoning, after reading the code it points at. Real findings go to the implementer via SendMessage. Re-run the review on the new diff until clean, within the run's loop cap.
 
-**6. QA in browser.** QA writer turns the ticket into a checklist: the exact repro steps (must now pass), the fixed behaviour, 2–5 nearby regression checks (same component, sibling flows, other roles or variants the code path branches on). For each item: preconditions, steps, expected result. Use the project's own QA or seed tooling for test data when it has some (check its skills and docs). The QA driver then starts the app the way the repo's README/AGENTS docs say (services, env, dev server) or reuses one already running, drives the app with the `chrome-devtools` MCP tools (`navigate_page`, `click`, `fill`, `take_snapshot`, `take_screenshot`, `list_console_messages`, `list_network_requests`), and returns per item: pass/fail, screenshot path, console errors, failing requests. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
+**6. QA.** QA writer always turns the ticket into a checklist: the exact repro steps (must now pass), the fixed behaviour, 2–5 nearby regression checks (same component, sibling flows, other roles or variants the code path branches on). For each item: preconditions, steps, expected result. Use the project's own QA or seed tooling for test data when it has some (check its skills and docs). If Test in Chrome is selected, the QA driver then starts the app the way the repo's README/AGENTS docs say (services, env, dev server) or reuses one already running, drives the app with the `chrome-devtools` MCP tools (`navigate_page`, `click`, `fill`, `take_snapshot`, `take_screenshot`, `list_console_messages`, `list_network_requests`), and returns per item: pass/fail, screenshot path, console errors, failing requests. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
 
 **7. Fix QA findings.** Failed items go to the implementer, then through phase 5 again, then the QA driver re-runs the failed items and the regression checks. Same loop cap.
 
-**8. Draft PR.**
+**8. Commit and draft PR.** Steps 2–3 only when Create draft PR is selected.
 1. A Sonnet agent commits on the ticket branch: repo commit style, ticket id in the subject, message humanized (`humanizer`), no AI attribution of any kind (no `Co-Authored-By: Claude`, no "Generated with" footer), even if a harness reminder asks for one.
 2. Push, open the PR with `--draft` against the default branch. Body follows the repo's PR template if one exists: problem and root cause, the fix, why the simpler option won, test and QA evidence (checklist with pass marks), migrations if any. Link the ticket. Run the body through `humanizer`.
 3. Re-read the published body. If a bot or template injected an attribution line, strip it.
 4. If push or `gh` fails (auth, hooks), stop and report the raw error. Don't retry with `--no-verify` unless the user says so.
 5. Never merge. Never post comments on the ticket or the PR unless the user asks.
 
+**9. Deploy.** A Sonnet agent finds the documented deploy path for a non-production environment, pushes the branch if needed, runs it, and returns the raw output plus the environment URL. You confirm the deployed build carries the fix (version, commit, or the repro steps on that environment). Deploy fails → report the raw error and stop; don't improvise a different deploy route.
+
 ## Reporting to the user
 
-Follow `i-have-adhd` for shape: lead with the outcome, numbered steps, max 5 items per list, state restated each turn. Between phases, send a one-line status ("3/8 simplify: fix moves to the cache key, 1 file"). The final report covers: PR link, root cause in one sentence, the fix, review rounds and what they caught, the QA table, anything skipped and why.
+Follow `i-have-adhd` for shape: lead with the outcome, numbered steps, max 5 items per list, state restated each turn. Between phases, send a one-line status ("3/8 simplify: fix moves to the cache key, 1 file"). The final report covers: which options ran, PR link (or branch name), deploy URL if any, root cause in one sentence, the fix, review rounds and what they caught, the QA table, anything skipped and why.
 
 ## Red flags: stop and correct
 
@@ -82,6 +89,8 @@ Follow `i-have-adhd` for shape: lead with the outcome, numbered steps, max 5 ite
 | "Quicker if I edit this one line" | SendMessage the implementer |
 | "Spawn without `model`, it's just a small task" | Always `model: "sonnet"` |
 | "Review finding is probably fine to skip" | Triage it in writing: real / not-real / out-of-scope |
-| "Tests pass, skip the browser" | Phase 6 runs for any user-visible bug |
+| "Tests pass, skip the browser" | With Test in Chrome selected, phase 6 runs for any user-visible bug |
+| "Option wasn't picked but it would help" | Mention it in the report; don't run it |
+| "Deploy to prod, it's the only target" | Non-production only; skip and say why |
 | "QA agent said pass" | Look at the screenshot |
-| "Branch is ready, merge it" | Draft PR only |
+| "Branch is ready, merge it" | Never merge |
