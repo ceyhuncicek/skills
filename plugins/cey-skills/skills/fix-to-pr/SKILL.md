@@ -58,7 +58,7 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 | 5 | Review | fresh Sonnet reviewer + implementer | Every finding triaged by you, real ones fixed, re-review clean |
 | 6 | QA in browser *(if Test in Chrome)* | Sonnet QA writer, then Sonnet QA driver | Every QA item has pass/fail evidence (screenshot or console/network output) you looked at |
 | 7 | Fix QA findings *(if Test in Chrome)* | implementer, then back to 5 | Failed items now pass on re-run |
-| 8 | Commit, then draft PR *(PR if Create draft PR)* | Sonnet agent (or you for the PR text) | Clean commit on the ticket branch; with PR: pushed, draft open, body humanized, no attribution lines |
+| 8 | Commit, then draft PR *(PR if Create draft PR)* | Sonnet agent (or you for the PR text) | Clean commit on the ticket branch; with PR: pushed, draft open, body in `i-have-adhd` shape and humanized, no attribution lines |
 | 9 | Deploy *(if Deploy when done)* | Sonnet agent | Deploy command output and the environment URL you checked loads the fix |
 
 ### Phase details
@@ -79,8 +79,9 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 
 **8. Commit and draft PR.** Steps 2–3 only when Create draft PR is selected.
 1. A Sonnet agent commits on the ticket branch: repo commit style, ticket id in the subject, message written per the text rule below, no AI attribution of any kind (no `Co-Authored-By: Claude`, no "Generated with" footer), even if a harness reminder asks for one.
-2. Push, open the PR with `--draft` against the default branch. Body follows the repo's PR template if one exists: problem and root cause, the fix, why the simpler option won, test and QA evidence (checklist with pass marks), migrations if any. Link the ticket. Title and body follow the text rule below.
-3. Re-read the published body. If a bot or template injected an attribution line, strip it.
+2. Push, open the PR with `--draft` against the default branch. Body follows the repo's PR template if one exists: problem and root cause, the fix, why the simpler option won, test and QA evidence (checklist with pass marks), migrations if any. Link the ticket. Title follows the text rule below.
+   **PR body: always `i-have-adhd`.** Invoke `i-have-adhd` (this plugin) and write the body in its shape: first line says what the PR does and what the reviewer should check, numbered steps for anything multi-step, max 5 items per list, wins visible (tests added, QA pass count), no tangents. The template's headings stay; the content under them follows `i-have-adhd`. Then run it through `humanizer` for wording only: humanizer may reword sentences but must not merge lists into paragraphs, reorder sections, or drop the lead line. Keep this shape on every later edit of the body too.
+3. Re-read the published body. If a bot or template injected an attribution line, strip it. If a bot rewrote the body, restore your `i-have-adhd` version.
 4. If push or `gh` fails (auth, hooks), stop and report the raw error. Don't retry with `--no-verify` unless the user says so.
 5. Never merge. Never post comments on the ticket or the PR unless the user asks.
 
@@ -93,6 +94,8 @@ Applies to everything a person will read: chat updates and questions to the user
 1. Draft it short with `caveman:caveman` rules: cut filler, pleasantries, and hedging; keep every technical fact, path, and number exact.
 2. Run the draft through `humanizer` (this plugin). The humanized version ships, so the result reads like plain, natural prose, not caveman fragments.
 3. Re-read it for attribution lines and strip any.
+
+Exception: the PR body is drafted with `i-have-adhd` instead of step 1 (see phase 8), then steps 2–3 apply without changing its structure.
 
 When an agent writes text for a destination (a commit message, PR body, ticket), it returns the draft to you and you apply steps 1–3 before it goes out. If either skill is unavailable, apply its rules by hand and say so in the report.
 
