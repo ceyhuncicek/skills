@@ -1,6 +1,6 @@
 ---
 name: pr-pending-review
-description: Use when given a GitHub PR link or number and asked to review it - runs an Opus-delegated investigation, ranks findings, and leaves them as PENDING (unsubmitted) inline review comments on GitHub in a soft, question-framed tone.
+description: Use when given a GitHub PR link or number and asked to review it - runs an Opus-delegated investigation, ranks findings, and leaves them as PENDING (unsubmitted) inline review comments on GitHub written short and kind in a teammate's voice (i-have-adhd shape, humanizer pass, varied openers instead of "is this intended?" on every comment).
 ---
 
 # pr-pending-review
@@ -52,14 +52,75 @@ Chat summary uses caveman-review format, one line per finding: `<file>:L<line>: 
 
 Only red and yellow findings become comments, unless the user asks otherwise.
 
-Run the drafts through the `humanizer` skill before posting. Then apply the house tone:
+The comment should read like a teammate who spotted something and is checking in, not like a checklist that ran. Kind, short, and in the reviewer's own voice. The author decides; you are asking.
 
-- open with a question: "Is this intended?", "Was dropping the file intended, or did it just stop compiling?"
-- propose the fix as a question: "Would returning null here be safer?", "Worth gating on `isInitialLoading`?"
-- no blame, no "you forgot", no severity emoji, no praise padding
-- 1-3 short paragraphs, blank line between them
-- name symbols and line numbers so the author can jump straight there
-- no AI attribution anywhere
+### Shape (`i-have-adhd`)
+
+Invoke `i-have-adhd` and apply its rules to each comment:
+
+1. **First sentence is the point.** What you noticed, at a named spot (symbol or behaviour in backticks). After one line the author knows where to look and what might go wrong.
+2. **One problem per comment.** When a finding has several consequences, keep the one the author is most likely to hit in production. The others get their own comment if they are red or yellow on their own, otherwise they go in the chat summary. No "also" paragraphs.
+3. **One sentence of mechanism, one `file:line`.** The full trace stays in the chat summary; the author will ask if they want it.
+4. **End with the fix as a question**, or skip the fix when it is obvious from the first line.
+
+Budget: aim for **150–300 characters**, hard cap **400**. Over the cap means the comment is carrying more than one problem or more than one sentence of trace.
+
+### Pick the opener by situation
+
+"Is it intended that…" on every comment reads like a bot. Ask about intent only when the code could plausibly be deliberate (a behaviour change, a trade-off, a removed guard). When it is plainly a slip (a crash, a wrong variable, a missed field), an intent question sounds sarcastic. Say what you saw and give the author an easy out instead.
+
+| Situation | How to open | Examples |
+|-----------|-------------|----------|
+| Could be on purpose | intent, with an easy out | "Was dropping the reload on publish on purpose, or did it slip in?", "Did you mean for `countryCode` to skip the pick check? Totally fine if so, just checking." |
+| Looks like a slip | heads-up, no intent question | "Not sure if you've hit this yet, but…", "Small catch:", "Heads up, I think…" |
+| Unsure of your own read | own the doubt | "I might be reading this wrong, but…", "Could be me, but doesn't this…?" |
+| Existing helper or pattern fits | suggestion question | "Does it make sense to use `formatDecimalValue` here?", "Could we reuse `X`?" |
+| Missing test, or an edge case nobody handled | "should we" | "Should we also add a test for the empty body?", "Should we handle a template that was unpublished mid-update?" |
+
+The register the user wants is "is this what you meant, or did it slip past?", asked very kindly. That idea can sit behind any of these openers; it does not need the word "intended".
+
+### Voice
+
+- Contractions always: it's, doesn't, I'd, we'd.
+- "I think" is fine, once per comment. It is honest about what you can't know from the diff. Facts after it stay flat.
+- One softener per comment, never stacked ("Not sure, but I think it might possibly" is three). "I think" counts as one. When the opener already softens ("I might be reading this wrong, but…"), drop the "I think".
+- Plain verbs: "crashes", "never runs", "flips back to NLD", not "can lead to unexpected behaviour".
+- "we" for the fix ("Could we…"), never "you should".
+
+### Cut
+
+- sentences that restate the diff; the author wrote it
+- "why it matters" after the mechanism already showed it
+- chains of "which… so… then"; one mechanism sentence
+- "worth noting", "to be clear", "genuinely", "arguably", "I checked", "potential issue", "this ensures"
+- em dashes, bold lead-ins, emoji, severity labels
+- blame ("you forgot"), praise padding ("Nice work, but…")
+
+### Before and after
+
+Before, 440 characters, opener used on every comment in the review:
+
+> Is it intended that `doc.check()` throws here during render? I think it crashes the inbox for any message with an empty body. `richTextJsonEmpty` has a `paragraph` with `content: []`, and `splitMessageContent` (`message-content.ts:25`) turns that into a paragraph inside a paragraph. Remirror rendered it fine. `check()` throws `Invalid content for node paragraph`, and only the `_app` boundary catches it.
+>
+> Would it work to add the fallback paragraph in `splitMessageContent` only when files were actually removed, and to catch here and fall back to an empty doc?
+
+After, 230 characters:
+
+> Not sure if you've hit this yet, but I think an empty message body crashes the inbox here. `splitMessageContent` (`message-content.ts:25`) nests a paragraph in a paragraph and `doc.check()` throws.
+>
+> Could we catch here and fall back to an empty doc?
+
+A plausibly deliberate change keeps the intent question:
+
+> Was skipping the reload after publish on purpose? The commit message says it reloads, but this only invalidates, so a dirty editor now relies on `reconcileQuestionnaireFormWithServer` alone.
+>
+> Would `router.reload()`, same as cancel, be safer?
+
+### Read the batch, then humanize
+
+1. Read all comments together, as the author will. No two open with the same three words. Intent phrasing ("intended", "on purpose", "did you mean") in at most one comment out of three. Vary the closing questions too ("Would…", "Could we…", "What about…", "Does it make sense to…").
+2. Invoke `humanizer` and actually run its pass on the whole batch, even when the drafts already look clean. Tell it the register is a friendly teammate's PR comment, and that it must keep every backtick, `file:line`, symbol name and closing question, must not lengthen anything, and must not add jokes or flourishes. Use only its final text; its draft and audit passes stay out of the comments.
+3. Hold the house rules after humanizing: every fix is a question, no blame, no emoji, no AI attribution anywhere.
 
 ## 5. Anchor and post as pending
 
@@ -79,6 +140,17 @@ cat > $SCRATCH/review.json <<'JSON'
   ]
 }
 JSON
+```
+
+Check the batch before posting. It flags comments over 400 characters, repeated three-word openers, em dashes, and intent questions in more than a third of the comments. Anything flagged goes back to section 4:
+
+```bash
+python3 <this skill's directory>/check_comments.py $SCRATCH/review.json
+```
+
+Then post:
+
+```bash
 gh api repos/<owner>/<repo>/pulls/<n>/reviews --method POST --input $SCRATCH/review.json \
   --jq '{id, state, url: .html_url}'
 ```
@@ -96,7 +168,7 @@ gh api repos/<owner>/<repo>/pulls/<n>/reviews/<id>/comments \
 
 ## 6. Report
 
-Give the user the review URL, state plainly that it is not submitted, and list what each comment says in one line. Offer to append findings that were left out.
+Use the `i-have-adhd` shape. First line: the review URL, and that it is pending, not submitted. Then one line per comment: `file:line` and what it asks. Findings left out get one line and an offer to add them. Last line: the one next action, usually "read them on GitHub and submit, or tell me which to cut".
 
 ## Gotchas
 
@@ -106,3 +178,8 @@ Give the user the review URL, state plainly that it is not submitted, and list w
 - Re-posting creates a second pending review. Add to the existing one with
   `gh api repos/<owner>/<repo>/pulls/<n>/comments` … or delete the old review first:
   `gh api repos/<owner>/<repo>/pulls/<n>/reviews/<id> --method DELETE`.
+- Re-read `.head.sha` just before posting. A force-push mid-review changes it, and a stale
+  `commit_id` rejects the review. Diff the old head against the new one to see whether the
+  content moved or it was only a rebase.
+- `FETCH_HEAD` is clobbered by any later `git fetch`, including one a subagent runs. Pin the PR
+  head to a real ref (`git update-ref refs/heads/pr<n> <sha>`) and hand subagents that name.
