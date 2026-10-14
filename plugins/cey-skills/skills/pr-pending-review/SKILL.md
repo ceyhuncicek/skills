@@ -1,13 +1,13 @@
 ---
 name: pr-pending-review
-description: Use when given a GitHub PR link or number and asked to review it - runs an Opus-delegated investigation, ranks findings, and leaves them as PENDING (unsubmitted) inline review comments on GitHub written short and kind in a teammate's voice (i-have-adhd shape, humanizer pass, varied openers instead of "is this intended?" on every comment).
+description: Use when given a GitHub PR link or number and asked to review it - runs an Opus-delegated investigation, ranks findings, and leaves them as PENDING (unsubmitted) inline review comments on GitHub (or approves the PR when nothing red or yellow turns up) written short and kind in a teammate's voice (i-have-adhd shape, humanizer pass, varied openers instead of "is this intended?" on every comment).
 ---
 
 # pr-pending-review
 
-Input: a PR URL or number. Output: a pending GitHub review the user submits themselves, plus a terse chat summary.
+Input: a PR URL or number. Output: a pending GitHub review the user submits themselves, plus a terse chat summary. When the review finds nothing red or yellow, the output is an approval instead (section 5b).
 
-Never submit the review. Never approve or request changes. `event` is always omitted from the API call.
+Never submit a review that has comments. Never request changes. The only `event` ever sent is `APPROVE`, and only on the clean path in section 5b; a review with comments always omits `event`.
 
 ## 1. Pull the PR
 
@@ -51,6 +51,8 @@ Chat summary uses caveman-review format, one line per finding: `<file>:L<line>: 
 ## 4. Write the GitHub comments
 
 Only red and yellow findings become comments, unless the user asks otherwise.
+
+No red or yellow findings at all: skip sections 4 and 5 and go to section 5b. Blue findings and questions do not block approval; they stay in the chat summary.
 
 The comment should read like a teammate who spotted something and is checking in, not like a checklist that ran. Kind, short, and in the reviewer's own voice. The author decides; you are asking.
 
@@ -166,9 +168,28 @@ gh api repos/<owner>/<repo>/pulls/<n>/reviews/<id>/comments \
 
 `line` and `side` come back null on pending comments — that is normal. `original_position` and `diff_hunk` are what prove the comment sits where you meant.
 
+## 5b. Approve when clean
+
+When verification leaves zero red and zero yellow findings, approve the PR. Don't approve on a partial read: the source diff, the test diff and the commit list must all have been checked, and every scout must have reported back.
+
+Skip the approval and report instead when any of these hold:
+- the PR is a draft, or already merged or closed
+- the PR author is the user (GitHub rejects self-approval)
+- the user already has a pending review on it (GitHub allows one; it blocks a new review)
+
+Approve with an empty body. No "LGTM" boilerplate, no summary, no attribution.
+
+```bash
+HEAD=$(gh api repos/<owner>/<repo>/pulls/<n> --jq .head.sha)
+gh api repos/<owner>/<repo>/pulls/<n>/reviews --method POST \
+  -f commit_id="$HEAD" -f event=APPROVE --jq '{id, state, url: .html_url}'
+```
+
+`state` must come back `APPROVED`.
+
 ## 6. Report
 
-Use the `i-have-adhd` shape. First line: the review URL, and that it is pending, not submitted. Then one line per comment: `file:line` and what it asks. Findings left out get one line and an offer to add them. Last line: the one next action, usually "read them on GitHub and submit, or tell me which to cut".
+Use the `i-have-adhd` shape. On the clean path, first line: the review URL and that the PR is approved, then one line per check that cleared it, then any blue findings with an offer to post them as comments. Otherwise, first line: the review URL, and that it is pending, not submitted. Then one line per comment: `file:line` and what it asks. Findings left out get one line and an offer to add them. Last line: the one next action, usually "read them on GitHub and submit, or tell me which to cut".
 
 ## Gotchas
 
