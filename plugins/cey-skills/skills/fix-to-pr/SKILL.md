@@ -1,15 +1,15 @@
 ---
 name: fix-to-pr
-description: Use when the user invokes /fix-to-pr, or hands over a bug ticket (Linear/GitHub issue link or a bug report) and wants it researched, fixed, and reviewed in one run, optionally with browser QA, a draft pull request, or a deploy.
+description: Use when the user invokes /fix-to-pr, or hands over a bug ticket (Linear/GitHub issue link or a bug report) and wants it researched, fixed, and reviewed in one run, optionally with QA on the app's real platform (Chrome for web, iOS simulator / Android emulator or device for mobile), a draft pull request, or a deploy.
 ---
 
 # fix-to-pr — Opus conducts and checks, Sonnet does the work
 
 ## Overview
 
-Ticket in, reviewed fix on a ticket branch out (plus browser QA, draft PR, and deploy when picked). Same split as `fable-opus`, different cast:
+Ticket in, reviewed fix on a ticket branch out (plus platform QA, draft PR, and deploy when picked). Same split as `fable-opus`, different cast:
 
-- **Claude (the session, latest Opus) = orchestrator and checker.** You own the ticket, the plan, every gate decision, and all talk with the user. You never edit code, run test suites, or drive the browser. You DO check: read the files and lines an agent cites, read every diff, look at every screenshot. An agent's report is a claim until you have checked it. If the session is not on Opus, stop and ask the user to switch (`/model opus`). Don't start on another model.
+- **Claude (the session, latest Opus) = orchestrator and checker.** You own the ticket, the plan, every gate decision, and all talk with the user. You never edit code, run test suites, or drive the app. You DO check: read the files and lines an agent cites, read every diff, look at every screenshot. An agent's report is a claim until you have checked it. If the session is not on Opus, stop and ask the user to switch (`/model opus`). Don't start on another model.
 - **Sonnet agents = all hands-on work.** Spawn every delegate with the Agent tool and an explicit `model: "sonnet"`. Never omit `model` (it would inherit Opus) and never downgrade to haiku.
   - **Scouts**: `Explore` type for read-only code reading. A scout that needs git history (`log -S`, blame) is `general-purpose`, since Explore has no shell.
   - **Planner / simplifier**: `Plan` type.
@@ -20,21 +20,31 @@ Ticket in, reviewed fix on a ticket branch out (plus browser QA, draft PR, and d
 
 ## Startup question (once, before any work)
 
-Load deferred tools first with ToolSearch (`AskUserQuestion`, `EnterWorktree`, the tracker and `chrome-devtools` tools). **Default branch** = `git symbolic-ref refs/remotes/origin/HEAD`, else `main`, else `master`.
+Load deferred tools first with ToolSearch (`AskUserQuestion`, `EnterWorktree`, the tracker tools, and the QA tools for the target picked below). **Default branch** = `git symbolic-ref refs/remotes/origin/HEAD`, else `main`, else `master`.
+
+**Pick the QA target before asking.** You know what platform the bug lives on; the question names it. Decide from the ticket (screen names, "iOS"/"Android"/"web" labels, screenshots) and the repo (`expo`/`react-native` in `package.json`, `ios/`, `android/`, `app.json`, `pubspec.yaml`, `*.xcodeproj`, `build.gradle` = native mobile; a web framework with no native targets = web). In a monorepo, go by the package the bug lives in.
+
+| Bug surface | QA target | Driver tools |
+|-------------|-----------|--------------|
+| Web app | Chrome | `chrome-devtools` MCP |
+| Native mobile (Expo, React Native, Swift, Kotlin, Flutter) | iOS simulator and/or Android emulator (or a connected device), whichever platforms the ticket affects | `agent-device` MCP (Skill `agent-device` first); Expo `automation_*` / `simulator_*` tools as fallback |
+| Desktop app (macOS, Electron) | the running app | `agent-device` MCP (macOS) |
+
+Never offer Chrome for a native screen: react-native-web can't reproduce safe-area insets, native modules, gestures, or keyboard behaviour, so it is not QA for a mobile bug. If the bug touches both web and native, test both. If the target can't run on this machine (no Xcode for iOS, no emulator image), say so in the question's option description.
 
 Ask ONE AskUserQuestion call with **four single-select questions**, one per option. Research, fix, simplify, and review always run; these four are extras. Put the default answer first and mark it "(Recommended)":
 
 | Header | Question | Default |
 |--------|----------|---------|
 | Worktree | Work in a git worktree? | **Yes** |
-| Chrome QA | Test the fix in Chrome? | **Yes** |
+| QA | Test the fix on `<target>`? (e.g. "Test the fix on the iOS simulator and Android emulator?") | **Yes** |
 | Draft PR | Create a draft PR? | **No** |
 | Deploy | Deploy when done? | **No** |
 
 What each option does:
 
 - **Worktree, yes**: isolated git worktree via `EnterWorktree`, based on the current local default branch. If it branched from a stale `origin/<default>`, have an agent run `git reset --hard <default>` inside the new worktree only, before any work. Worktrees often lack `.env` files: copy them from the main checkout. **No** = new ticket branch in the current checkout; if that checkout is dirty with unrelated changes, say so and stop until the user decides.
-- **Chrome QA, yes**: phases 6–7 drive the app with the `chrome-devtools` MCP. **No** = the QA writer still produces the checklist, but nobody drives the browser; the checklist goes in the final report (and the PR body) marked "not run".
+- **QA, yes**: phases 6–7 drive the app on the picked target with its driver tools. **No** = the QA writer still produces the checklist, but nobody drives the app; the checklist goes in the final report (and the PR body) marked "not run" for the user to check on that target.
 - **Draft PR, yes**: phase 8 commits, pushes, and opens a draft PR. **No** = phase 8 commits on the ticket branch only, no push.
 - **Deploy, yes**: phase 9 deploys the ticket branch to a non-production environment using the project's documented method (deploy scripts, `package.json` scripts, infra repo docs, CI workflows). Never production. If no method is documented, say so and skip. Needs the branch pushed, so it pushes even if no PR was requested.
 
@@ -56,8 +66,8 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 | 3 | Simplify | fresh Sonnet planner | Smallest change that still fixes the root cause. You pick the final plan |
 | 4 | Apply | Sonnet implementer | Diff matches the final plan, failing test added first and now passing, project checks green |
 | 5 | Review | fresh Sonnet reviewer + implementer | Every finding triaged by you, real ones fixed, re-review clean |
-| 6 | QA in browser *(if Test in Chrome)* | Sonnet QA writer, then Sonnet QA driver | Every QA item has pass/fail evidence (screenshot or console/network output) you looked at |
-| 7 | Fix QA findings *(if Test in Chrome)* | implementer, then back to 5 | Failed items now pass on re-run |
+| 6 | QA on target *(if QA)* | Sonnet QA writer, then Sonnet QA driver | Every QA item has pass/fail evidence (screenshot or console/network output) you looked at |
+| 7 | Fix QA findings *(if QA)* | implementer, then back to 5 | Failed items now pass on re-run |
 | 8 | Commit, then draft PR *(PR if Create draft PR)* | Sonnet agent (or you for the PR text) | Clean commit on the ticket branch; with PR: pushed, draft open, body in `i-have-adhd` shape and humanized, no attribution lines |
 | 9 | Deploy *(if Deploy when done)* | Sonnet agent | Deploy command output and the environment URL you checked loads the fix |
 
@@ -73,7 +83,12 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 
 **5. Review.** A fresh agent invokes `caveman:caveman-review` (Skill tool) on `git diff <default>` in the working path, which includes uncommitted work. It also reads the repo's own review rules (a `pr-review` skill, CONVENTIONS docs) if they exist. For each finding you mark real / not-real / out-of-scope, with one line of reasoning, after reading the code it points at. Real findings go to the implementer via SendMessage. Re-run the review on the new diff until clean, within the run's loop cap.
 
-**6. QA.** QA writer always turns the ticket into a checklist: the exact repro steps (must now pass), the fixed behaviour, 2–5 nearby regression checks (same component, sibling flows, other roles or variants the code path branches on). For each item: preconditions, steps, expected result. Use the project's own QA or seed tooling for test data when it has some (check its skills and docs). If Test in Chrome is selected, the QA driver then starts the app the way the repo's README/AGENTS docs say (services, env, dev server) or reuses one already running, drives the app with the `chrome-devtools` MCP tools (`navigate_page`, `click`, `fill`, `take_snapshot`, `take_screenshot`, `list_console_messages`, `list_network_requests`), and returns per item: pass/fail, screenshot path, console errors, failing requests. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
+**6. QA.** QA writer always turns the ticket into a checklist: the exact repro steps (must now pass), the fixed behaviour, 2–5 nearby regression checks (same component, sibling flows, other roles or variants the code path branches on). For each item: preconditions, steps, expected result. Use the project's own QA or seed tooling for test data when it has some (check its skills and docs). If QA is selected, the QA driver then starts the app the way the repo's README/AGENTS docs say (services, env, dev server, Metro, simulator/emulator build) or reuses one already running, and drives it on the picked target:
+- **Web (Chrome)**: `chrome-devtools` MCP (`navigate_page`, `click`, `fill`, `take_snapshot`, `take_screenshot`, `list_console_messages`, `list_network_requests`).
+- **iOS / Android**: `agent-device` MCP (`open`, `press`, `fill`, `scroll`, `snapshot`, `screenshot`, `logs`, `network`), one session per platform the ticket affects. Check device-specific behaviour the bug depends on (safe-area insets, notch vs no notch, keyboard, back gesture, orientation, dark mode).
+- **Desktop**: `agent-device` MCP against the macOS app.
+
+It returns per item and per platform: pass/fail, screenshot path, console/device log errors, failing requests. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
 
 **7. Fix QA findings.** Failed items go to the implementer, then through phase 5 again, then the QA driver re-runs the failed items and the regression checks. Same loop cap.
 
@@ -121,7 +136,8 @@ Keep it short enough to read in under a minute. Details live in the PR, not the 
 | "Quicker if I edit this one line" | SendMessage the implementer |
 | "Spawn without `model`, it's just a small task" | Always `model: "sonnet"` |
 | "Review finding is probably fine to skip" | Triage it in writing: real / not-real / out-of-scope |
-| "Tests pass, skip the browser" | With Test in Chrome selected, phase 6 runs for any user-visible bug |
+| "Tests pass, skip the QA run" | With QA selected, phase 6 runs for any user-visible bug |
+| "Chrome is quicker for this RN screen" | Native bug → simulator/emulator. Web rendering is not QA for it |
 | "Option wasn't picked but it would help" | Mention it in the report; don't run it |
 | "Deploy to prod, it's the only target" | Non-production only; skip and say why |
 | "QA agent said pass" | Look at the screenshot |
