@@ -62,6 +62,17 @@ if(o!=null)console.log(typeof o==="object"?JSON.stringify(o):String(o))' "$1" "$
 QA_CFG="$PROJ/.claude/mobile-qa.json"
 cfg() { jget "$QA_CFG" "$1"; }
 
+# "skip": {"<platform>": "reason"} in mobile-qa.json parks a platform: build/install/launch
+# print SKIPPED and exit 3. --no-skip or RN_QA_NO_SKIP=1 ignores it (to verify that platform).
+NO_SKIP="${RN_QA_NO_SKIP:-0}"
+FORCE_PARALLEL="${RN_QA_FORCE_PARALLEL:-0}"
+skip_reason() { cfg "skip.$1"; }
+check_skip() {
+  [ "$NO_SKIP" = 1 ] && return 0
+  local r; r=$(skip_reason "$1"); [ -n "$r" ] || return 0
+  echo "SKIPPED: $1 — $r (set in .claude/mobile-qa.json)"; exit 3
+}
+
 # export env overrides from mobile-qa.json "env"
 if [ -f "$QA_CFG" ]; then
   while IFS= read -r kv; do [ -n "$kv" ] && export "${kv?}"; done < <(node -e '
@@ -205,7 +216,7 @@ build_inner() {  # runs with stdout/stderr already going to the build log
 cmd_build() {
   local p="" detach=0 child=0 a
   for a in "$@"; do case "$a" in --detach) detach=1 ;; --_child) child=1 ;; *) p=$a ;; esac; done
-  check_plat "$p"; need_modules
+  check_plat "$p"; [ $child = 1 ] || { check_skip "$p"; check_parallel "$p"; }; need_modules
   local log="$STATE/build-$p.log"
   if [ $child = 1 ]; then build_inner "$p" >> "$log" 2>&1; return $?; fi
   local h; h=$(lock_holder); [ -n "$h" ] && die "a native build is already running (pid/platform/project): $h. Use 'rn-qa.sh wait build' or wait for it."
@@ -234,7 +245,7 @@ ios_udid() {  # pick (and boot if needed) a simulator; prints UDID
     else u=$(xcrun simctl list devices available | grep -E '^ +iPhone' | grep -oE '[0-9A-F-]{36}' | head -1); fi
     [ -n "$u" ] || die "no iOS simulator available"
     say "booting simulator $u" >&2
-    xcrun simctl boot "$u" >/dev/null 2>&1
+    xcrun simctl boot "$u" >/dev/null 2>&1; sset ios_booted_by_rnqa "$u"
     run_timeout 240 xcrun simctl bootstatus "$u" -b >/dev/null 2>&1 || die "simulator $u did not boot in 240 s"
   fi
   sset ios_udid "$u"; echo "$u"
@@ -263,8 +274,21 @@ android_serial() {
   sset android_serial "$s"; echo "$s"
 }
 
+# check_parallel PLAT: exit 4 while the other platform is still active (one platform at a time).
+check_parallel() {
+  [ "$FORCE_PARALLEL" = 1 ] && return 0
+  local o=ios why="" h u; [ "$1" = ios ] && o=android
+  [ "$(sget active_platform)" = "$o" ] && [ -n "$(my_port)" ] && why="this worktree's Metro is up with $o launched"
+  h=$(lock_holder); [ -n "$h" ] && [ "$(echo "$h" | cut -d' ' -f2)" = "$o" ] && why="a $o build holds the lock ($h)"
+  if [ "$o" = ios ]; then u=$(sget ios_booted_by_rnqa); [ -n "$u" ] && ios_booted | grep -q "^$u " && why="the iOS simulator rn-qa booted ($u) is still running"
+  else alive "$(sget emulator_pid)" && why="the Android emulator rn-qa started (pid $(sget emulator_pid)) is still running"; fi
+  [ -n "$why" ] || return 0
+  echo "REFUSED: $1 while $o is active: $why. Finish $o first: close its agent-device session, run 'rn-qa.sh cleanup' (add --shutdown if rn-qa booted the device). --force-parallel overrides."
+  exit 4
+}
+
 cmd_install() {
-  local p=$1 art; check_plat "$p"; art=$(sget "artifact_$p")
+  local p=$1 art; check_plat "$p"; check_skip "$p"; check_parallel "$p"; art=$(sget "artifact_$p")
   [ -e "$art" ] || die "no built artifact for $p; run: rn-qa.sh build $p --detach && rn-qa.sh wait build"
   [ "$(sget build_status)" = running ] && die "a build is running; wait for it first"
   if [ "$p" = ios ]; then
@@ -279,7 +303,7 @@ cmd_install() {
       die "adb install failed"; }
     say "installed $(basename "$art") on $s"
   fi
-  sset "installed_$p" "$(sget "fingerprint_$p")"
+  sset "installed_$p" "$(sget "fingerprint_$p")"; sset active_platform "$p"
 }
 
 # ---------- metro (one per worktree, own port) ----------
@@ -364,7 +388,8 @@ prewarm() {  # same query RN builds (RCTBundleURLProvider.mm / DevServerHelper.k
 }
 bundled_count() { grep -c 'Bundled' "$STATE/metro.log" 2>/dev/null || true; }
 cmd_launch() {
-  local p=$1 id; check_plat "$p"; id=$(resolved_id "$p") || exit 1
+  local p=$1 id; check_plat "$p"; check_skip "$p"; check_parallel "$p"; id=$(resolved_id "$p") || exit 1
+  sset active_platform "$p"
   need_metro
   [ "${2:-}" = --no-prewarm ] || prewarm "$p" "$id"
   local before; before=$(bundled_count)
@@ -474,6 +499,8 @@ cmd_doctor() {
   echo "project: $PROJ"; echo "type: $(project_type)"; echo "state dir: $STATE"; echo "cache dir: $CACHE"
   echo "mobile-qa.json: $( [ -f "$QA_CFG" ] && echo "$QA_CFG" || echo none)"
   [ -f "$QA_CFG" ] && echo "env overrides: $(node -e 'try{console.log(Object.keys(JSON.parse(require("fs").readFileSync(process.argv[1])).env||{}).join(" ")||"none")}catch(e){console.log("invalid JSON")}' "$QA_CFG")"
+  [ -f "$QA_CFG" ] && node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).skip||{};
+for(const[k,v]of Object.entries(s))if(v)console.log("skip: "+k+" ("+v+")"+(process.argv[2]==="1"?" [ignored: --no-skip]":""))}catch(e){}' "$QA_CFG" "$NO_SKIP"
   echo "node_modules: $( [ -d "$PROJ/node_modules" ] && echo present || echo 'MISSING (install deps first)')"
   echo "native dirs: ios=$( [ -d "$PROJ/ios" ] && echo yes || echo no) android=$( [ -d "$PROJ/android" ] && echo yes || echo no)"
   echo "ios bundle id: $(app_id ios)"; echo "android package: $(app_id android)"
@@ -488,7 +515,7 @@ cmd_doctor() {
   echo "agent-device:"; agent_sessions | sed 's/^/  /'
 }
 cmd_cleanup() {
-  cmd_metro stop
+  cmd_metro stop; rm -f "$STATE/kv/active_platform"
   local app; app=$(sget ios_jslocation_app)
   if [ -n "$app" ] && [ -n "$(sget ios_udid)" ]; then
     xcrun simctl spawn "$(sget ios_udid)" defaults delete "$app" RCT_jsLocation >/dev/null 2>&1; rm -f "$STATE/kv/ios_jslocation_app"
@@ -497,6 +524,7 @@ cmd_cleanup() {
   if [ "${1:-}" = --shutdown ]; then
     [ -n "$(sget ios_udid)" ] && xcrun simctl shutdown "$(sget ios_udid)" 2>/dev/null && say "shut down simulator $(sget ios_udid)"
     alive "$(sget emulator_pid)" && { "$ADB" -s "$(sget android_serial)" emu kill >/dev/null 2>&1; say "stopped emulator"; }
+    rm -f "$STATE/kv/ios_booted_by_rnqa" "$STATE/kv/emulator_pid"
   fi
   say "agent-device sessions still open (close each with the agent-device MCP 'close' tool):"
   agent_sessions | sed 's/^/  /'
@@ -514,10 +542,17 @@ rn-qa.sh <command>      (project: $PROJ)
   launch ios|android [--no-prewarm]
   status                       real state of build, artifacts, Metro, devices
   cleanup [--shutdown]         stop Metro, remove adb reverse, list agent-device sessions to close
+  --no-skip (any command)      ignore "skip" in .claude/mobile-qa.json (same as RN_QA_NO_SKIP=1)
+  --force-parallel (any command)  allow build/install/launch while the other platform is active (RN_QA_FORCE_PARALLEL=1)
+Exit codes: 0 ok, 1 error, 2 still running (wait), 3 platform skipped by "skip" in mobile-qa.json,
+  4 refused: the other platform is still active in this worktree (Metro+launch, rn-qa-booted device, or its build lock)
 EOF
 }
 
 main() {
+  local args=() a
+  for a in "$@"; do case "$a" in --no-skip) NO_SKIP=1 ;; --force-parallel) FORCE_PARALLEL=1 ;; *) args+=("$a") ;; esac; done
+  set -- ${args[@]+"${args[@]}"}
   local c=${1:-help}; [ $# -gt 0 ] && shift
   case "$c" in
     doctor) cmd_doctor ;;

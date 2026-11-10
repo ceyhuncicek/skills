@@ -27,7 +27,7 @@ Load deferred tools first with ToolSearch (`AskUserQuestion`, `EnterWorktree`, t
 | Bug surface | QA target | Driver tools |
 |-------------|-----------|--------------|
 | Web app | Chrome | `chrome-devtools` MCP |
-| Native mobile (Expo, React Native, Swift, Kotlin, Flutter) | iOS simulator and/or Android emulator (or a connected device), whichever platforms the ticket affects | `agent-device` MCP (Skill `agent-device` first); Expo `automation_*` / `simulator_*` tools as fallback |
+| Native mobile (Expo, React Native, Swift, Kotlin, Flutter) | iOS simulator by default (on macOS); Android emulator (or a connected device) only when the user opts in, or instead of iOS when the bug is Android-only | `agent-device` MCP (Skill `agent-device` first); Expo `automation_*` / `simulator_*` tools as fallback |
 | Desktop app (macOS, Electron) | the running app | `agent-device` MCP (macOS) |
 
 Never offer Chrome for a native screen: react-native-web can't reproduce safe-area insets, native modules, gestures, or keyboard behaviour, so it is not QA for a mobile bug. If the bug touches both web and native, test both. If the target can't run on this machine (no Xcode for iOS, no emulator image), say so in the question's option description.
@@ -37,14 +37,14 @@ Ask ONE AskUserQuestion call with **four single-select questions**, one per opti
 | Header | Question | Default |
 |--------|----------|---------|
 | Worktree | Work in a git worktree? | **Yes** |
-| QA | Test the fix on `<target>`? (e.g. "Test the fix on the iOS simulator and Android emulator?") | **Yes** |
+| QA | Test the fix on `<target>`? (e.g. "Test the fix on the iOS simulator?") | **Yes** |
 | Draft PR | Create a draft PR? | **No** |
 | Deploy | Deploy when done? | **No** |
 
 What each option does:
 
 - **Worktree, yes**: isolated git worktree via `EnterWorktree`, based on the current local default branch. If it branched from a stale `origin/<default>`, have an agent run `git reset --hard <default>` inside the new worktree only, before any work. Worktrees often lack `.env` files: copy them from the main checkout. **No** = new ticket branch in the current checkout; if that checkout is dirty with unrelated changes, say so and stop until the user decides.
-- **QA, yes**: phases 6–7 drive the app on the picked target with its driver tools. **No** = the QA writer still produces the checklist, but nobody drives the app; the checklist goes in the final report (and the PR body) marked "not run" for the user to check on that target.
+- **QA, yes**: phases 6–7 drive the app on the picked target with its driver tools. For a native mobile target, the QA question has three options instead of Yes/No: "Yes, iOS simulator" (Recommended), "Yes, iOS + Android" (description: "adds the Android emulator after iOS; slower, runs sequentially"), and "No". For an Android-only bug, offer "Yes, Android emulator" as the recommended option instead of iOS. A platform the user didn't pick is reported as `SKIPPED (not selected)`. **No** = the QA writer still produces the checklist, but nobody drives the app; the checklist goes in the final report (and the PR body) marked "not run" for the user to check on that target.
 - **Draft PR, yes**: phase 8 commits, pushes, and opens a draft PR. **No** = phase 8 commits on the ticket branch only, no push.
 - **Deploy, yes**: phase 9 deploys the ticket branch to a non-production environment using the project's documented method (deploy scripts, `package.json` scripts, infra repo docs, CI workflows). Never production. If no method is documented, say so and skip. Needs the branch pushed, so it pushes even if no PR was requested.
 
@@ -95,7 +95,7 @@ Every QA driver brief says: "Load deferred tools with ToolSearch before calling 
 - If the driver has been silent for more than 10 minutes while `status` shows the build `done`, `cached`, or `failed`, SendMessage it to continue.
 - Past the 45-minute budget, stop it and report QA as BLOCKED.
 
-It returns per item and per platform: pass/fail, screenshot path, console/device log errors, failing requests. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
+It returns per item and per platform: pass/fail, screenshot path, console/device log errors, failing requests. A platform listed in `skip` in `.claude/mobile-qa.json` (this wins over the QA answer) is reported as SKIPPED with its reason, and an unpicked platform as `SKIPPED (not selected)`, in the final report and the PR body; neither counts as verified. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
 
 **7. Fix QA findings.** Failed items go to the implementer, then through phase 5 again, then the QA driver re-runs the failed items and the regression checks. Same loop cap.
 

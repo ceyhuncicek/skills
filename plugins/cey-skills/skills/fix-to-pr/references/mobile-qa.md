@@ -13,7 +13,10 @@ Builds are cached by native fingerprint and shared across worktrees, so a JS-onl
 
 1. **Load tools first.** Load deferred tools with ToolSearch before calling them (`select:mcp__agent-device__open,mcp__agent-device__press,...`). A tool whose schema isn't loaded fails, and a failed wait/notify call means nothing will wake you.
 2. **Doctor.** `bash "$RNQA" doctor`. It shows project type, bundle id/package, booted devices, the Metros on ports 8081–8099 and their worktrees, open agent-device sessions, and free disk. A fresh worktree has no `node_modules`: run the repo's install (`npm ci`, or the lockfile's tool) before anything else. It takes about 1–3 minutes and every later step needs it.
-3. **One platform at a time.** iOS first on macOS unless the ticket is Android-only. Do the second platform only if the ticket affects it, and only after the first one is finished. Never build both at once (the script's lock refuses it): parallel builds have filled the disk and wedged adb.
+3. **Platforms: iOS by default, one at a time.**
+   - **Default is the iOS simulator only.** Run Android only when the brief says the user opted in (then after iOS), or instead of iOS when the brief says the bug is Android-only. Report a platform that wasn't picked as `SKIPPED (not selected)`.
+   - **Repo skip wins.** Platforms listed in `skip` (doctor prints `skip: <platform> (<reason>)`) are not driven even if picked: report every item on them as `SKIPPED (<reason>)`, never as pass. `build`/`install`/`launch` on a skipped platform print `SKIPPED: ...` and exit 3. Pass `--no-skip` (or `RN_QA_NO_SKIP=1`) only when the brief explicitly asks you to verify that platform.
+   - **Never two platforms at once** (it lags the machine; parallel builds have filled the disk and wedged adb). Start the second platform only after the first is fully done: all its items finished, its agent-device session closed, `bash "$RNQA" cleanup` run, and, if rn-qa or you booted that simulator/emulator, `cleanup --shutdown`. The script enforces this: `build`/`install`/`launch` of one platform exit 4 while this worktree still has the other platform launched with Metro up, a simulator/emulator rn-qa booted for it still running, or a build of it holds the lock. Don't pass `--force-parallel` unless the brief says so.
 4. **Build.** `bash "$RNQA" build ios --detach`, then `bash "$RNQA" wait build` in the foreground. Each call blocks for at most 100 s, which fits the Bash tool's default 120 s timeout. Exit 0 means done (or a cache hit), 1 means failed (it prints the last 40 log lines), and 2 means it is still running. Exit 2 is normal: call `wait build` again. To block longer, pass `--timeout 540`, but only with the Bash tool's `timeout: 600000`. Never idle while waiting for a notification. Never write `sleep`/`grep` poll loops, and don't use Monitor unless you loaded its schema. The `osascript ... "Simulator"` error at the end of `expo run:ios` is not fatal: the script checks for the `.app`.
 5. **Install, Metro, launch.**
    ```sh
@@ -45,13 +48,15 @@ Optional. Every field is optional, and the script falls back to `expo config`, t
   "ios": { "bundleId": "com.example.app", "scheme": "Example", "device": "iPhone 17" },
   "android": { "package": "com.example.app", "avd": "Medium_Phone_API_36.0" },
   "env": { "EXPO_PUBLIC_API_URL": "https://dev-api.example.com" },
+  "skip": { "android": "why this platform is parked; remove once fixed" },
   "login": "path to a doc, or text describing the test-login technique",
   "notes": "anything else the QA driver must know"
 }
 ```
 
-- `platforms`: the platforms this app ships on. Skip the others.
+- `platforms`: the platforms this app ships on. Skip the others. This does not opt in to Android QA: the default is still iOS only.
 - `env`: exported for every command (build, fingerprint, Metro). Use it to point the bundle at a dev API instead of prod. `APP_VARIANT`-style variables change the bundle id and the fingerprint.
+- `skip`: platforms to leave out of QA for now, each with a non-empty reason (any platform key). It wins over the user's QA platform choice. The script refuses to build, install or launch them (exit 3) unless given `--no-skip` / `RN_QA_NO_SKIP=1`. Items on a skipped platform are reported as `SKIPPED (<reason>)`.
 - `login`, `notes`: read them before driving the app.
 
 State and logs live in `${RN_QA_HOME:-~/.cache/rn-qa}/<project>/<worktree>/`, and builds in `.../<project>/cache/` (3 per platform are kept).
