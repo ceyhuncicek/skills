@@ -85,8 +85,15 @@ Each phase ends at a gate. You decide the gate; an agent never passes its own. *
 
 **6. QA.** QA writer always turns the ticket into a checklist: the exact repro steps (must now pass), the fixed behaviour, 2–5 nearby regression checks (same component, sibling flows, other roles or variants the code path branches on). For each item: preconditions, steps, expected result. Use the project's own QA or seed tooling for test data when it has some (check its skills and docs). If QA is selected, the QA driver then starts the app the way the repo's README/AGENTS docs say (services, env, dev server, Metro, simulator/emulator build) or reuses one already running, and drives it on the picked target:
 - **Web (Chrome)**: `chrome-devtools` MCP (`navigate_page`, `click`, `fill`, `take_snapshot`, `take_screenshot`, `list_console_messages`, `list_network_requests`).
-- **iOS / Android**: `agent-device` MCP (`open`, `press`, `fill`, `scroll`, `snapshot`, `screenshot`, `logs`, `network`), one session per platform the ticket affects. Check device-specific behaviour the bug depends on (safe-area insets, notch vs no notch, keyboard, back gesture, orientation, dark mode).
+- **iOS / Android (React Native)**: paste `references/mobile-qa.md` (this skill's folder) into the driver's brief, plus `RNQA=<skill base dir>/scripts/rn-qa.sh` as an absolute path. Take the base directory from the "Base directory for this skill" line printed when the skill loaded. Subagent shells may not have `${CLAUDE_PLUGIN_ROOT}`; it is only a fallback. The driver follows the reference exactly. It sets up through `rn-qa.sh` (doctor, cached `build --detach` + `wait build`, install, a per-worktree `metro start`, launch, cleanup), handles one platform at a time, keeps to a 25/45-minute budget, and drives with `agent-device` MCP, one session per platform. For a native Swift/Kotlin/Flutter app, it starts the app the way the repo docs say and drives it with `agent-device` the same way. Check device-specific behaviour the bug depends on (safe-area insets, notch vs no notch, keyboard, back gesture, orientation, dark mode).
 - **Desktop**: `agent-device` MCP against the macOS app.
+
+Every QA driver brief says: "Load deferred tools with ToolSearch before calling them. Never wait for a notification that only a deferred tool would send."
+
+**You watch the driver.** Run it in the background so you can check on it.
+- When the user asks for status, run `rn-qa.sh status` in the worktree and look at the driver's latest activity. Don't repeat its last message.
+- If the driver has been silent for more than 10 minutes while `status` shows the build `done`, `cached`, or `failed`, SendMessage it to continue.
+- Past the 45-minute budget, stop it and report QA as BLOCKED.
 
 It returns per item and per platform: pass/fail, screenshot path, console/device log errors, failing requests. If the app can't run or log in, QA is BLOCKED, never passed: tell the user why and ask how to proceed. Skipping phase 6 for a bug with no UI surface is allowed only if you tell the user and list what a test covers instead.
 
@@ -141,4 +148,6 @@ Keep it short enough to read in under a minute. Details live in the PR, not the 
 | "Option wasn't picked but it would help" | Mention it in the report; don't run it |
 | "Deploy to prod, it's the only target" | Non-production only; skip and say why |
 | "QA agent said pass" | Look at the screenshot |
+| "Driver said it's waiting for the build" | Run `rn-qa.sh status`; if the build ended, nudge the driver |
+| "Fresh worktree, rebuild both platforms in parallel" | `rn-qa.sh build` reuses the cached build, one platform at a time |
 | "Branch is ready, merge it" | Never merge |
