@@ -48,6 +48,7 @@ The first command refreshes the catalog, the second pulls the new plugin version
 | `agent-pipeline` | Multi-agent dev pipeline: PM plans and groups subtasks by file ownership, parallel Coders implement, Reviewer checks. |
 | `brainstorming` | Explores intent, approaches, and design decisions before any implementation or planning starts. |
 | `deep-pipeline` | Deeper pipeline: dedicated research agents, then dual-PM Actor-Critic planning, then parallel Coders and a Reviewer. |
+| `dogfood` | Clicks through a web app like a real user and writes up each bug it finds, with screenshots, a repro video, and the steps to reproduce it. Needs the `agent-browser` CLI. |
 | `document-review` | Refines a brainstorm or plan document before moving to the next step of the workflow. |
 | `fable-gpt` | Fable orchestrates and reviews while Codex implements. |
 | `fable-opus` | Fable plans, directs, and reviews while Opus agents research and implement in a worktree. |
@@ -93,4 +94,5 @@ and push. Users only see an update when that version string changes.
 ## Third-party skills
 
 `humanizer` and `img2threejs` are vendored from their upstream projects and keep their original MIT
-`LICENSE` files. `frontend-design` carries its own license terms.
+`LICENSE` files. `dogfood` comes from [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser)
+(v0.44.0) and keeps its Apache-2.0 `LICENSE`. `frontend-design` carries its own license terms.
